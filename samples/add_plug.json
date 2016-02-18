@@ -1,0 +1,11 @@
+{
+  "type": "action",
+  "payload": {
+    "identifier": "IP9258_ADD_PLUG",
+    "data": {
+      "mac": "00:92:58:01:41:17",
+      "login": "admin",
+      "password": "12345678"
+    }
+  }
+}
