@@ -1,0 +1,9 @@
+{
+  "type": "action",
+  "payload": {
+    "identifier": "IP9258_GETPOWER",
+    "data": {
+      "mac": "00:92:58:01:41:17"
+    }
+  }
+}

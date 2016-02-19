@@ -1,0 +1,30 @@
+{
+  "type": "action",
+  "payload": {
+    "identifier": "IP9258_OUTLETS",
+    "data": {
+      "mac": "00:92:58:01:41:17",
+      "outlets": [{
+        "type": "interval",
+        "index": 0,
+        "every": "2",
+        "during": "1"
+      }, {
+        "type": "interval",
+        "index": 1,
+        "every": "2",
+        "during": "1"
+      }, {
+        "type": "timer",
+        "index": 2,
+        "start": "8h30",
+        "end": "9h30"
+      }, {
+        "type": "interval",
+        "index": 3,
+        "every": "2",
+        "during": "1"
+      }]
+    }
+  }
+}

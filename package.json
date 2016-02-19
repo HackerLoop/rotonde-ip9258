@@ -19,7 +19,7 @@
   "dependencies": {
     "arp-monitor": "github:vitaminwater/node-arp-monitor",
     "lodash": "^4.4.0",
-    "request": "^2.69.0",
+    "node-fetch": "^1.3.3",
     "rotonde-client": "github:hackerloop/rotonde-client.js"
   }
 }
