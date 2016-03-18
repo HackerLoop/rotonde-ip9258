@@ -16,7 +16,7 @@ const findByArp = () => {
 			console.log(stderr);
 			return;
 		}
-		const lines = _.filter(stdout.split('\n'), (line) => /00:92:58:01/.test(line));
+		const lines = _.filter(stdout.toUpperCase().split('\n'), (line) => /00:92:58:01/.test(line));
 		const machines = _.map(lines, (line) => {
 			const attrs = line.split('\t');
 			const plug = plugs[attrs[1]];
