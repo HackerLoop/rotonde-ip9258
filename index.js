@@ -7,7 +7,31 @@ var fetch = require('node-fetch');
 
 const client = new require('rotonde-client/node/rotonde-client')('ws://rotonde:4224');
 
-const arp = new require('arp-monitor')();
+const exec = require('child_process').exec;
+
+// Looks for power plugs by ARP scanning, require sudo apt-get install -y arp-scan
+const findByArp = () => {
+	exec('arp-scan -lgR', (error, stdout, stderr) => {
+		if (stderr) {
+			console.log(stderr);
+			return;
+		}
+		const lines = _.filter(stdout.split('\n'), (line) => /00:92:58:01/.test(line));
+		const machines = _.map(lines, (line) => {
+			const attrs = line.split('\t');
+			const plug = plugs[attrs[1]];
+
+			if (plug) {
+				console.log('Got: ', plug, ' ', attrs);
+				plug.ip = attrs[0];
+				updatePlugOutlets(plug);
+			}
+
+		});
+		setTimeout(findByArp, 3 * 60 * 1000); // every 3 min
+	});
+};
+findByArp();
 
 const cmdUrl = (plug, cmd, params, order) => {
   const paramsUrl = _.reduce(order || _.keys(params), (v, param) => {
@@ -34,23 +58,6 @@ const getOutletsPower = (mac) => {
     });
   });
 };
-
-arp.on('in', (node) => {
-  const plug = plugs[node.mac];
-  if (plug) {
-    console.log('Got: ', plug, ' ', node);
-    plug.ip = node.ip;
-    updatePlugOutlets(plug);
-  }
-});
-
-arp.on('out', (node) => {
-  const plug = plugs[node.mac];
-  if (plug) {
-    console.log('Lost plug: ', plug);
-    plug.ip = null;
-  }
-});
 
 const sendAndRepeat = (url) => {
   fetch(url).then(() => {
