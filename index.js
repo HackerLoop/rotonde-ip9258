@@ -7,7 +7,31 @@ var fetch = require('node-fetch');
 
 const client = new require('rotonde-client/node/rotonde-client')('ws://rotonde:4224');
 
-const arp = new require('arp-monitor')();
+const exec = require('child_process').exec;
+
+// Looks for power plugs by ARP scanning, require sudo apt-get install -y arp-scan
+const findByArp = () => {
+	exec('arp-scan -lgR', (error, stdout, stderr) => {
+		if (stderr) {
+			console.log(stderr);
+			return;
+		}
+		const lines = _.filter(stdout.toUpperCase().split('\n'), (line) => /00:92:58:01/.test(line));
+		const machines = _.map(lines, (line) => {
+			const attrs = line.split('\t');
+			const plug = plugs[attrs[1]];
+
+			if (plug) {
+				console.log('Got: ', plug, ' ', attrs);
+				plug.ip = attrs[0];
+				updatePlugOutlets(plug);
+			}
+
+		});
+		setTimeout(findByArp, 3 * 60 * 1000); // every 3 min
+	});
+};
+findByArp();
 
 const cmdUrl = (plug, cmd, params, order) => {
   const paramsUrl = _.reduce(order || _.keys(params), (v, param) => {
@@ -35,23 +59,6 @@ const getOutletsPower = (mac) => {
   });
 };
 
-arp.on('in', (node) => {
-  const plug = plugs[node.mac];
-  if (plug) {
-    plug.ip = node.ip;
-    console.log('Got: ', plug);
-    updatePlugOutlets(plug);
-  }
-});
-
-arp.on('out', (node) => {
-  const plug = plugs[node.mac];
-  if (plug) {
-    console.log('Lost plug: ', plug);
-    plug.ip = null;
-  }
-});
-
 const sendAndRepeat = (url) => {
   fetch(url).then(() => {
     console.log('done: ' + url);
@@ -73,89 +80,94 @@ const updatePlugOutlets = (plug) => {
   }
 
   const date = new Date();
-  _.forEach(plug.outlets, (outlet) => {
-    if (outlet.type == 'timer') {
-      const baseParams = {
-        yy: date.getFullYear(),
-        mm: (date.getMonth() + 1),
-        dd: date.getDate(),
-        ss: '00', param: 255,
-      }
-
-      const startTime = outlet.start.split('h');
-      sendAndRepeat(cmdUrl(plug, 'setschedule', _.merge(baseParams, {
-        power: (outlet.index + 1) + 'a',
-        hh: startTime[0],
-        mn: startTime[1],
-        onoff: 1,
-      }), SCHEDULE_PARAMS_ORDER));
-      const endTime = outlet.end.split('h');
-      sendAndRepeat(cmdUrl(plug, 'setschedule', _.merge(baseParams, {
-        power: (outlet.index + 1) + 'b',
-        hh: endTime[0],
-        mn: endTime[1],
-        onoff: 0,
-      }), SCHEDULE_PARAMS_ORDER));
-    } else {
-      const baseParams = {
-        yy: 2000,
-        mm: '01',
-        dd: '01',
-        ss: '00', param: '000',
-        hh: '00',
-        mn: '00',
-        onoff: 0,
-      }
-
-      sendAndRepeat(cmdUrl(plug, 'setschedule', _.merge(baseParams, {
-        power: (outlet.index + 1) + 'b',
-      }), SCHEDULE_PARAMS_ORDER));
-      sendAndRepeat(cmdUrl(plug, 'setschedule', _.merge(baseParams, {
-        power: (outlet.index + 1) + 'a',
-      }), SCHEDULE_PARAMS_ORDER));
+  _.forEach(plug.outlets, (outlet, i) => {
+    const baseParams = {
+      yy: 2000,
+      mm: '01',
+      dd: '01',
+      ss: '00', param: '000',
+      hh: '00',
+      mn: '00',
+      onoff: 0,
     }
+
+    sendAndRepeat(cmdUrl(plug, 'setschedule', _.merge(baseParams, {
+      power: (outlet.index + 1) + 'b',
+    }), SCHEDULE_PARAMS_ORDER));
+    sendAndRepeat(cmdUrl(plug, 'setschedule', _.merge(baseParams, {
+      power: (outlet.index + 1) + 'a',
+    }), SCHEDULE_PARAMS_ORDER));
   });
 }
 
 const updatePlugPower = () => {
-  _.forEach(plugs, (plug) => {
+  _.forEach(plugs, (plug, plugIndex) => {
     if (!plug.ip || !plug.outlets) {
       return;
     }
 
     getOutletsPower(plug.mac).then((statuses) => {
       _.forEach(plug.outlets, (outlet) => {
-        if (outlet.type == 'interval') {
+	let isOn;
+	let isOnFor;
+	let isOffFor;
+	if (outlet.type == 'timer') {
+	  const startTime = _.map(outlet.start.split('h'), (v) => parseInt(v, 10));
+	  if (startTime.length != 2) {
+	    console.log('Wrong startTime format for plug ' + plugIndex + ' outlet ' + i + '. Check spreadsheet');
+	    return;
+	  }
+	  const endTime = _.map(outlet.end.split('h'), (v) => parseInt(v, 10));
+	  if (endTime.length != 2) {
+	    console.log('Wrong endTime format for plug ' + plugIndex + ' outlet ' + i + '. Check spreadsheet');
+	    return;
+	  }
+	  if (endTime[0] < startTime[0]) {
+	    endTime[0] += 24;
+	  }
+
+	  const currentHour = new Date().getHours();
+	  const currentMin = new Date().getMinutes();
+
+	  const minTime = currentHour * 60 + currentMin;
+	  const endMinTime = endTime[0] * 60 + endTime[1];
+	  const startMinTime = startTime[0] * 60 + startTime[1];
+
+	  isOn = minTime >= startMinTime && minTime <= endMinTime;
+	  isOnFor = (endMinTime - minTime) * 60;
+	  isOffFor = (startMinTime - minTime) * 60;
+	} else if (outlet.type == 'interval') {
           const secs = parseInt(new Date().getTime() / 1000);
           const every = parseInt(outlet.every * 60);
           const during = parseInt(outlet.during * 60);
           const period = every + during;
-          const isOn = (secs % period) > every;
-          const isOnFor = during - ((secs % period) - every);
-          const isOffFor = every - (secs % period);
-          const needsRefresh = isOn != statuses[outlet.index];
 
-          if (!needsRefresh) {
-            const state = isOn ? 'on' : 'off';
-            const duration = isOn ? isOnFor : isOffFor;
-            console.log('outlet ' + outlet.index + ' still in state ' + state + ' for ' + duration + ' sec');
-            return;
-          }
+	  isOn = (secs % period) > every;
+          isOnFor = during - ((secs % period) - every);
+          isOffFor = every - (secs % period);
+	}
 
-          if (isOn) {
-            console.log('outlet ' + outlet.index + ' should be on for ' + isOnFor + ' sec');
-            const params = {};
-            params['p6' + (outlet.index + 1)] = 1;
-            params['p6' + (outlet.index + 1) + 'n'] = 0;
-            params['t6' + (outlet.index + 1)] = isOnFor;
-            sendAndRepeat(cmdUrl(plug, 'setpower', params));
-          } else {
-            console.log('outlet ' + outlet.index + ' should be off for ' + isOffFor + ' sec');
-            const params = {};
-            params['p6' + (outlet.index + 1)] = 0;
-            sendAndRepeat(cmdUrl(plug, 'setpower', params));
-          }
-        }
+	const needsRefresh = isOn != statuses[outlet.index];
+	if (!needsRefresh) {
+	  const state = isOn ? 'on' : 'off';
+	  const duration = isOn ? isOnFor : isOffFor;
+	  console.log('plug ' + plugIndex + ' outlet ' + outlet.index + ' type ' + outlet.type + ' still in state ' + state + ' for ' + duration + ' sec');
+	  return;
+	}
+
+	if (isOn) {
+	  console.log('plug ' + plugIndex + ' outlet ' + outlet.index + ' type ' + outlet.type + ' should be on for ' + isOnFor + ' sec');
+	  const params = {};
+	  params['p6' + (outlet.index + 1)] = 1;
+	  params['p6' + (outlet.index + 1) + 'n'] = 0;
+	  params['t6' + (outlet.index + 1)] = isOnFor;
+	  sendAndRepeat(cmdUrl(plug, 'setpower', params));
+	} else {
+	  console.log('plug ' + plugIndex + ' outlet ' + outlet.index + ' type ' + outlet.type + ' should be off for ' + isOffFor + ' sec');
+	  const params = {};
+	  params['p6' + (outlet.index + 1)] = 0;
+	  sendAndRepeat(cmdUrl(plug, 'setpower', params));
+	}
       });
     });
 

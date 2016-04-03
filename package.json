@@ -17,7 +17,6 @@
   },
   "homepage": "https://github.com/HackerLoop/rotonde-ip9258#readme",
   "dependencies": {
-    "arp-monitor": "github:vitaminwater/node-arp-monitor",
     "lodash": "^4.4.0",
     "node-fetch": "^1.3.3",
     "rotonde-client": "github:hackerloop/rotonde-client.js"
