@@ -1,1 +1,0 @@
-{"00:92:58:01:41:17":{"login":"admin","mac":"00:92:58:01:41:17","password":"12345678","outlets":[{"during":"0.6","every":"0.2","index":0,"type":"interval"},{"during":"0.4","every":"0.4","index":1,"type":"interval"},{"end":"9h30","index":2,"start":"8h30","type":"timer"},{"during":"0.2","every":"0.6","index":3,"type":"interval"}],"ip":"192.168.1.25"}}

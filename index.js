@@ -38,8 +38,8 @@ const getOutletsPower = (mac) => {
 arp.on('in', (node) => {
   const plug = plugs[node.mac];
   if (plug) {
-    console.log('Got: ', plug, ' ', node);
     plug.ip = node.ip;
+    console.log('Got: ', plug);
     updatePlugOutlets(plug);
   }
 });
